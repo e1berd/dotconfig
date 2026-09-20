@@ -1,237 +1,255 @@
-# Правила проекта и стандарты разработки
+# Правила проекта — Laravel 13 Fullstack
 
-Эти правила обязательны для соблюдения всеми разработчиками и AI-агентами. Они имеют абсолютный приоритет над стилем сгенерированного кода и шаблонами по умолчанию.
+Стек: Laravel 13 · Inertia.js 3 + Vue 3 · Orion (auto-CRUD) · Filament 5 (админка) · Laravel Fortify (auth) · Centrifugo (real-time) · PostgreSQL 17 · FrankenPHP (worker-режим) · Tailwind 4 · Vuzeno (UI, shadcn-vue registry) · Mosaic Design System.
 
----
-
-## 1. Философия кода: без поясняющих комментариев
-
-Код обязан быть самодокументируемым. Имя функции, класса, переменной, интерфейса и структура потока управления выражают намерение без необходимости в пояснительной прозе.
-
-- **Запрещены любые комментарии, объясняющие «что делает этот код»**: никаких `//`, `/* */`, `#`, `<!-- -->`, `{{-- --}}` с пересказом логики.
-- **Никаких очевидных docblocks**: docblock допустим только там, где он сообщает статическому анализатору сложную сигнатуру типа, недоступную на уровне языка (например, сложные дженерики или кортежи).
-- **Непонятный код = сигнал к рефакторингу**: если фрагмент кода кажется неочевидным без комментария, его следует переименовать, разбить на небольшие чистые функции или вынести в отдельный модуль, а не сопровождать пояснительным текстом.
-- **Единственное исключение**: фиксация внешних ограничений, которые физически невозможно вывести из кода (ссылка на баг в сторонней библиотеке, юридическое требование/нормативный акт с URL, вынужденный обходной путь с датой и обоснованием).
+Эти правила обязательны для соблюдения всеми разработчиками и AI-агентами. Они имеют абсолютный приоритет над стилем сгенерированного кода.
 
 ---
 
-## 2. Лимиты размера файлов
+## Веб-сервер (FrankenPHP worker-режим)
 
-- **Ориентир**: до 350 строк.
-- **Жёсткий потолок**: 400 строк.
-- Файл, превышающий 400 строк из-за накопления бизнес-логики, немедленно декомпозируется:
-  - Логика предметной области выносится в специализированные сервисы, действия (Actions) или хелперы.
-  - Разметка и UI-логика делятся на подкомпоненты и composables / хуки.
-- Исключение: крупные монолитные таблицы конфигураций или автосгенерированные артефакты, редактирование которых запрещено.
+Код пишется совместимым с long-running процессами (FrankenPHP worker-режим):
 
----
-
-## 3. Версии и зависимости
-
-- **Никакого legacy**: только актуальные стабильные версии инструментов, фреймворков и библиотек.
-- Перед установкой новой зависимости обязательно проверяется актуальная стабильная версия на `npmjs.com` / `packagist.org`, а не берутся устаревшие пакеты из памяти.
-- Deprecation-предупреждения устраняются сразу при обнаружении.
-- Запрещено добавление пакетов, функциональность которых заблокирована за платной подпиской или проприетарной лицензией.
+- **Никакого глобального / статического мутабельного состояния между запросами.** Статические свойства, синглтоны и кэш в памяти (`static $`, `app()->singleton()` с мутабельным состоянием) живут между запросами в worker-режиме. Если значение должно стартовать заново для каждого запроса — сбрасывать его в middleware или использовать `Request::macro`/`Context` (Laravel 13).
+- **Никаких `exit()`, `die()`, `dd()` в коде.** Они убивают worker-процесс целиком. Для отладки — `logger()`, `dump()`, Ray.
+- **Осторожно с `register_shutdown_function` и глобальными обработчиками ошибок.** В worker-режиме они срабатывают не один раз на процесс, а накапливаются на каждый запрос. Использовать `app()->terminating()` или middleware вместо shutdown-хуков.
+- **Не полагаться на то, что процесс завершится после ответа.** Код после `return response()` в контроллере может не выполниться (Laravel `terminate()` вызывается, но сам PHP-процесс остаётся жить). Тяжёлую пост-обработку — только в очередь (`Queue::push`).
+- **Не хранить соединения (БД, Redis, HTTP, gRPC) в статических свойствах.** Соединения могут протухнуть между запросами. Клиенты обязаны проверять живость соединения или пересоздаваться.
 
 ---
 
-## 4. Современный CSS: нативные возможности и Nesting
+## Философия кода: без поясняющих комментариев
 
-Вёрстка и стилизация должны использовать максимально современные возможности стандарта CSS (W3C), без устаревших препроцессорных хаков.
+Поясняющих комментариев в коде нет — ни в PHP, ни в Vue/TS. Код самодокументируемый: имя метода, имя переменной и структура выражают намерение без прозы.
 
-### 4.1. Нативный CSS Nesting (Native Nesting)
-Никаких сторонних SCSS/Sass-препроцессоров ради вложенности — используется исключительно спецификация **CSS Nesting Module**:
+- Никаких `//`, `#`, `/* */`, `{{-- --}}` комментариев, объясняющих «что делает строка».
+- Docblock — только там, где он несёт типовую информацию, недоступную из сигнатуры (`@param array<string, int>`), а не пересказ названия метода.
+- Если фрагмент непонятен без комментария, это сигнал переименовать или выделить метод/composable/Action, а не дописать пояснение.
+- Исключение: фиксация внешнего ограничения, которое невозможно вывести из кода (баг в чужой библиотеке, требование закона со ссылкой на норму, обходной путь с датой и причиной).
 
-- **Вложенность состояний и псевдоклассов**:
-  ```css
-  .button {
-    background-color: var(--color-surface);
-    color: var(--color-foreground);
+---
 
-    &:hover {
-      background-color: var(--color-surface-hover);
-    }
+## Размер файла
 
-    &:focus-visible {
-      outline: 2px solid var(--color-focus-ring);
-      outline-offset: 2px;
-    }
+- Ориентир — до 350 строк, жёсткий потолок — 400.
+- Превышение допустимо для Vue SFC и Blade-шаблонов, где разметка не делится без потери связности, а также для сгенерированных файлов (`resources/js/components/ui/**`).
+- Класс или компонент, переваливший за 400 строк из-за накопления логики, разбивается: бизнес-логика уходит в `app/Actions`, разметка/логика Vue — в под-компоненты и composables.
 
-    &:active {
-      transform: translateY(1px);
-    }
+---
 
-    &:disabled,
-    &[aria-disabled="true"] {
-      opacity: 0.5;
-      pointer-events: none;
-    }
-  }
+## Версии и зависимости
+
+Только актуальные версии инструментов, никакого legacy.
+
+- Перед добавлением зависимости проверять последнюю стабильную версию на `packagist.org` / `npmjs.com`, а не копировать из памяти.
+- Использовать современные API Laravel 13: атрибуты `#[Fillable]`/`#[Hidden]` вместо свойств, `casts()` методом.
+- Никаких пакетов, полная функциональность которых требует платной подписки.
+- Deprecation-предупреждения чинятся сразу.
+
+---
+
+## Хелперы и `literal()`
+
+Максимально использовать штатные хелперы и composables Laravel, Inertia, Vue, VueUse и Orion вместо ручных конструкций. Перед написанием цикла или ручного преобразования проверить, нет ли штатного метода.
+
+- В PHP предпочитать: `str()`, `collect()`, `data_get()`, `blank()`, `filled()`, `rescue()`, `throw_if()`, `throw_unless()`, `tap()`, `transform()`, `value()`, `once()`.
+- Во Vue предпочитать: Composition API (`computed`, `toRef()`, `toRefs()`, `watch()`, `watchEffect()`) и composables VueUse (`useEventListener()`, `watchDebounced()`, `useDebounceFn()`).
+- Собственный helper или composable оправдан только предметной логикой или повторным использованием, а не простой обёрткой над готовым API.
+
+**`literal()` — способ по умолчанию для любой одноразовой именованной ad-hoc структуры везде, где он применим.** Это относится к результатам Actions и сервисов, координации в контроллерах, вложенным Inertia-props и JSON-конвертам:
+
+```php
+return literal(findings: $findings, failedChunks: $failed);
+```
+
+JSON-ответы:
+```php
+return response()->json(literal(status: 'ok', data: $data));
+```
+
+---
+
+## Возможности PHP 8.5 и Laravel 13
+
+- **Pipe operator `|>` — предпочтительный способ выразить линейную цепочку преобразований одного значения**:
+  ```php
+  $text |> trim(...) |> mb_strtolower(...) |> $this->normalize(...)
   ```
+  Справа от `|>` — callable: функция (`trim(...)`), статический метод (`File::ensureDirectoryExists(...)`), метод объекта (`$this->normalize(...)`), first-class callable или Action.
+- `array_first()`, `array_last()`, `array_any()`, `array_all()` вместо `reset()`, `end()` и ручных циклов.
+- First-class callable синтаксис `foo(...)` везде вместо строковых имён.
+- Property hooks и `readonly` классы для value-объектов.
+- **`and`/`or` вместо `&&`/`||` в управляющих guard-конструкциях**:
+  `$user = User::find($id) or abort(404);`
+- `??=` вместо `if (!isset($x)) { $x = ...; }`, `??` вместо тернарного `isset()`, `?->` вместо ручной проверки на `null`, `?:` вместо `$x ? $x : $y`.
+- `match` вместо `switch` для ветвления по значению без fallthrough.
 
-- **Вложенность прямых потомков и селекторов**:
-  ```css
-  .article-card {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
+---
 
-    & > .header {
-      font-size: 1.25rem;
-      font-weight: 600;
-    }
+## Архитектура и структура
 
-    & .content {
-      color: var(--color-muted-foreground);
+- Бизнес-логика — в `app/Actions/<Домен>/<Действие>.php`, один класс = одно действие. Контроллер/Orion-хук только вызывает Action.
+- **Типовой CRUD — через Orion (`Orion::resource()`), не ручные контроллеры.** Ручной контроллер пишется только там, где логика выходит за рамки CRUD (стриминг, запуск сложного анализа, вебхуки).
+- **Inertia-контроллеры** отдают страницы (`inertia()` с типизированными props).
+- **Orion-эндпоинты** — точечные операции внутри страницы (поиск, пагинация, обновление записи без reload) через TS SDK Orion на клиенте (`$query()/$attributes/$save()`), а не через ручной `fetch`.
+- Изоляция команды — таблица `teams`, scope на Eloquent-моделях по `team_id`.
+- Vue: страницы — `resources/js/pages/`, компоненты — `resources/js/components/`, примитивы Vuzeno — `resources/js/components/ui/`.
+- Админка — Filament, не Inertia-страницы.
 
-      & p {
-        line-height: 1.6;
-      }
-    }
-  }
-  ```
+### Клиентские запросы
+1. CRUD: Orion TS SDK.
+2. Данные страницы / chrome: типизированные props через Inertia (`Inertia::optional()`, `router.reload({ only: [...] })`).
+3. Мутации без обособленного JSON-ответа: `router.visit()` с Wayfinder-объектом маршрута.
+4. Отдельный JSON-эндпоинт: нативные `fetch`, `URL`, `Request`, `Response`.
+5. **`axios` в прикладном коде категорически запрещён.**
 
-- **Вложенные медиа-запросы и контейнерные запросы (@media, @container)**:
-  Медиа-условия пишутся прямо внутри селектора соответствующего компонента, сохраняя контекст:
-  ```css
-  .responsive-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 1.5rem;
+---
 
-    @media (min-width: 768px) {
-      grid-template-columns: repeat(2, 1fr);
-    }
+## Скролл (ScrollArea)
 
-    @media (min-width: 1024px) {
-      grid-template-columns: repeat(4, 1fr);
-      gap: 2rem;
-    }
-  }
-  ```
+Любой скролл (вертикальный список, лента чата, форма, попап) — через `resources/js/components/scroll-area/` (обёртка над `@ark-ui/vue/scroll-area`), не нативный `overflow-y-auto`.
+- `ScrollArea.Root orientation="vertical" class="..." content-class="..."`.
+- **Обязательно `max-w-full` рядом с `w-full`**: у Vuzeno-заготовки зашит лимит `max-w-[calc(100vw-8rem)]`, который на мобильных устройствах обрезает панель раньше края.
+- Не оборачивать в ScrollArea контейнеры с динамически растягиваемой высотой `h-full`, если процентная высота вложенных блоков должна сохраняться.
 
-### 4.2. Реляционный псевдокласс `:has()`
-Использовать `:has()` для стилизации предков и соседних элементов по состоянию дочерних узлов без необходимости привлекать JavaScript:
-- Управление формой по валидности полей:
-  ```css
-  form:has(:invalid) button[type="submit"] {
-    opacity: 0.6;
-    pointer-events: none;
-  }
-  ```
-- Стилизация карточки при наличии активного чекбокса или бейджа:
-  ```css
-  .card:has(input[type="checkbox"]:checked) {
-    border-color: var(--color-primary);
-    background-color: var(--color-primary-subtle);
-  }
-  ```
-- Раскрытие сайдбара и контента:
-  ```css
-  body:has([data-sidebar-expanded="true"]) main {
-    margin-left: var(--sidebar-width-expanded);
-  }
-  ```
+---
 
-### 4.3. Контейнерные запросы (Container Queries)
-Для переиспользуемых модульных компонентов адаптивность строится от ширины родительского контейнера (`container-type: inline-size`), а не от глобального viewport:
+## Современный CSS и Nesting в приложении
+
+Приложение использует Tailwind 4, нативные переменные и расширенные стандарты CSS3/CSS4.
+
+### Нативный CSS Nesting
+Никаких SCSS-препроцессоров. В стилях (`app.css`, SFC-блоках `<style>`) используется нативный CSS Nesting:
 ```css
-.card-container {
-  container-type: inline-size;
-  container-name: card;
-}
+.chat-bubble {
+  position: relative;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-lg);
+  background-color: var(--card);
 
-.card {
-  display: flex;
-  flex-direction: column;
+  &:hover {
+    background-color: color-mix(in oklab, var(--card) 95%, var(--foreground));
+  }
 
-  @container card (min-width: 450px) {
-    flex-direction: row;
+  &[data-mine="true"] {
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+
+    & .author-label {
+      opacity: 0.8;
+    }
+  }
+
+  @media (min-width: 768px) {
+    padding: 1rem 1.25rem;
+  }
+
+  @container (min-width: 500px) {
+    display: flex;
     align-items: center;
   }
+}
+```
 
-  @container card (min-width: 700px) {
-    padding: 2.5rem;
+### Реляционный псевдокласс `:has()`
+Использовать `:has()` для контекстной стилизации предков:
+```css
+/* Выделение контейнера при наличии фокуса в поле ввода */
+.search-form:has(input:focus-visible) {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+/* Скрытие или отключение действий при пустом или невалидном состоянии */
+.table-container:has(tbody:empty) .table-pagination {
+  display: none;
+}
+```
+
+### Контейнерные запросы (Container Queries)
+Виджеты, чаты, сайдбары и карточки сущностей адаптируются под свой родительский контейнер (`@container`), обеспечивая независимость от размера окна браузера:
+```css
+.entity-grid-item {
+  container-type: inline-size;
+}
+
+.entity-card {
+  @container (min-width: 400px) {
+    grid-template-columns: auto 1fr;
   }
 }
 ```
 
-### 4.4. Современные цветовые пространства и функции
-- **`oklch()`**: предпочтительная модель для объявления палитры благодаря однородной воспринимаемой яркости (perceptual uniformity) и поддержке широкого цветового охвата Display P3.
-- **`color-mix()`**: вычисление оттенков, полупрозрачностей и состояний на лету без дублирования переменных:
-  ```css
-  border-color: color-mix(in oklab, var(--color-border) 80%, transparent);
-  background-color: color-mix(in oklch, var(--color-primary) 12%, transparent);
-  ```
-- **`light-dark()`**: нативное разделение светлой и тёмной тем без раздувания селекторов:
-  ```css
-  :root {
-    color-scheme: light dark;
-    --surface: light-dark(#ffffff, #121214);
-    --foreground: light-dark(#18181b, #f4f4f5);
-  }
-  ```
+### Цветовые пространства, `color-mix()` и `light-dark()`
+- Токены тем задаются в `app.css`.
+- Динамические оттенки, кольца фокуса и прозрачности рассчитываются через `color-mix(in oklab, ...)`:
+  `shadow-[0_0_0_3px_color-mix(in_oklab,var(--foreground)_10%,transparent)]`
+- Темизация поверхностей поддерживает `light-dark()`:
+  `--surface: light-dark(#ffffff, #101012);`
 
-### 4.5. Каскадные слои (Cascade Layers `@layer`)
-Изолировать приоритеты специфичности через явные слои:
-```css
-@layer reset, base, components, utilities;
-
-@layer components {
-  .btn { /* стили компонента */ }
-}
-```
-
-### 4.6. CSS Subgrid
-Для выравнивания независимых вложенных элементов (заголовки, мета-данные, кнопки) между соседними карточками использовать `subgrid`:
-```css
-.grid-parent {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-auto-rows: auto 1fr auto;
-}
-
-.grid-item {
-  display: grid;
-  grid-row: span 3;
-  grid-template-rows: subgrid;
-}
-```
-
-### 4.7. Математика и плавные размеры
-- Использовать `clamp()` для адаптивной типографики и отступов без прыжков:
-  ```css
-  font-size: clamp(1rem, 0.8rem + 1vw, 1.5rem);
-  padding: clamp(1rem, 2vw, 2.5rem);
-  ```
-- Применять `min()`, `max()`, `round()` вместо громоздких медиа-правил там, где достаточно формулы.
+### CSS Subgrid
+В карточках списков (Orion/Inertia списки) использовать `subgrid` для выравнивания заголовков, описания и кнопок действий между рядами.
 
 ---
 
-## 5. Стандарты JavaScript / TypeScript
+## Дизайн-система (Mosaic)
 
-- **Импорт типов**: только с явным указанием `import type { ... }` (отдельной строкой от runtime-импортов). Побочные эффекты импортов типов строго запрещены.
-- **Современные методы стандартной библиотеки**:
-  - `array.at(-1)` вместо `array[array.length - 1]`.
-  - `Object.hasOwn(obj, prop)` вместо `Object.prototype.hasOwnProperty.call(...)`.
-  - `structuredClone(obj)` вместо хаков с `JSON.parse(JSON.stringify(obj))`.
-  - `array.flatMap(...)` вместо комбинаций `map().flat()`.
-  - `string.replaceAll(...)` вместо регулярных выражений с глобальным флагом `/g`.
-- **Именование**: говорящие имена без сокращений (`user` вместо `u`, `documentRepository` вместо `repo`).
+Визуальный контракт — Mosaic (Clerk).
+- **Brand-кнопки используют градиент, остальные контролы — плоскую заливку.** `default`-кнопка идёт от `primary` к `primary-dk`. Inset-shadow на интерактивных элементах запрещён.
+- **Радиус — по ролям, не по размеру.** `--radius: 0.5rem` разворачивается в `--radius-sm/md/lg/xl` = `4/6/8/12px`.
+  `rounded-md` — control (кнопка, инпут sm/md), `rounded-lg` — крупный инпут, `rounded-xl` — контейнер (Card).
+- **Фокус разный для кнопок и полей.** У кнопки — цветное кольцо (`focus-visible:ring-2 ring-ring ring-offset-2`), у инпута — нейтральный halo:
+  `focus-visible:border-muted-foreground focus-visible:shadow-[0_0_0_3px_color-mix(in_oklab,var(--foreground)_10%,transparent)]`.
+- **Размеры контролов**:
+  - `sm`: h-7 / px-2.5 (кнопка), h-7 / px-3 (инпут)
+  - `md`: h-8 / px-3 (стандартные кнопки и инпуты)
+  - `lg`: h-9 / px-3 (крупные контролы)
+- **Хром приложения (шапка, сайдбар)**: брендовый акцент, не поверхность контента. Токены `--header`, `--header-foreground`, `--header-border` не зависят от темы контента.
 
 ---
 
-## 6. Гейты качества и проверка кода
+## Real-time (Centrifugo) и Межсервисное взаимодействие
 
-Перед отправкой изменений код обязан проходить автоматическую проверку инструментами Oxc (oxlint / oxfmt) и тайпчекером:
+- **Real-time**: Паблиш событий — через gRPC API Centrifugo (`CentrifugoApi`, вендоренный `proto/centrifugo/v1/api.proto`), не HTTP API и не Laravel Broadcasting.
+  Событие на клиенте только триггерит повторный запрос/инвалидацию через Orion TS SDK.
+- **RPC по умолчанию**: Бэкенд-сервисы взаимодействуют по gRPC с типизированным контрактом в `proto/`. Клиенты сервисов биндятся как `scoped` (не `singleton`), чтобы gRPC-канал не перетекал между worker-запросами.
+- **Health Check**:
+  - gRPC: реализация `grpc.health.v1.Health` (`Check`/`Watch`).
+  - HTTP: `GET /health` -> JSON `{"status": "ok"}`.
+  - Контейнер приложения не должен требовать `service_healthy` от внешних микросервисов для своего старта.
+
+---
+
+## Auth (Laravel Fortify)
+
+- Авторизация и регистрация через Laravel Fortify.
+- Кастомный `CreateNewUser` создаёт пользователя и привязанную заявку в `registration_requests`.
+- Доступ гейтится через `EnsureRegistrationApproved` middleware: до одобрения админом в Filament — редирект на `/pending-approval`.
+- Обязательное подтверждение Email до одобрения заявки.
+
+---
+
+## i18n
+
+**Никакого raw пользовательского текста в коде.**
+- Сервер: YAML-файлы в `lang/<locale>/*.yaml` (`YamlFileLoader`), RU и EN.
+- Vue SFC: локальный блок `<i18n lang="yaml">` рядом с шаблоном. Не выносить разовый текст в общий каталог.
+- Общие клиентские переводы: `resources/js/locales/{ru,en}.yaml`.
+- Форматирование дат, чисел и плюрализация — средствами Vue I18n / `Intl`.
+- Любой новый ключ сразу добавляется для RU и EN с идентичной структурой.
+
+---
+
+## Гейты проверки
+
+Перед коммитом обязаны проходить:
 
 ```bash
-# Форматирование
-pnpm oxfmt --check .
-
-# Линтинг
-pnpm oxlint .
-
-# Проверка типов
-pnpm types:check
+./vendor/bin/pint --test
+composer run types:check
+php artisan test
+pnpm oxlint resources/js vite.config.ts
+pnpm oxfmt resources/js vite.config.ts --check
+pnpm run types:check
+pnpm run test
 ```

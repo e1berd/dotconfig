@@ -1,40 +1,34 @@
-# dotconfig
+# dotconfig (Ветка `laravel`)
 
-Централизованный репозиторий настроек, конфигураций линтеров/форматтеров и правил для AI-агентов и разработчиков.
+Специализированная конфигурация для высокопроизводительных проектов на **Laravel 13 + PHP 8.5 + FrankenPHP (worker mode) + Inertia.js 3 / Vue 3 + Tailwind 4**.
 
-## Ветки репозитория
+Базируется на проверенной архитектуре `lexai`.
 
-- **`main`**: Базовые универсальные стандарты для современных веб-проектов:
-  - `.oxfmtrc.json` — конфигурация ультрабыстрого форматтера `oxfmt`
-  - `.oxlintrc.json` — конфигурация линтера `oxlint` (TypeScript, Unicorn, Vue)
-  - `.editorconfig` — согласованное форматирование отступов и концов строк
-  - `CLAUDE.md` / `AGENTS.md` — строгие правила разработки, отказ от избыточных комментариев, лимиты строк и расширенные стандарты современного CSS (нативный CSS Nesting, `:has()`, Container Queries, `oklch`, `color-mix`, `light-dark`, `@layer`, `subgrid`).
+## Содержимое ветки
 
-- **`laravel`**: Специализированный пресет для высоконагруженных приложений на **Laravel 13 + PHP 8.5 + FrankenPHP + Inertia.js 3 / Vue 3 + Tailwind 4**:
-  - Все конфигурации из `main`
-  - `pint.json` — код-стайл PHP от Laravel Pint
-  - `phpstan.neon` — статический анализ типов PHPStan / Larastan на уровне 7
-  - `CLAUDE.md` / `AGENTS.md` с правилами работы с worker-режимом FrankenPHP, pipe operator `|>`, `literal()`, Orion CRUD, Centrifugo gRPC, Ark UI ScrollArea, дизайном Mosaic и строгими гейтами.
+- `.oxfmtrc.json` — конфигурация `oxfmt` (без точек с запятой, одинарные кавычки).
+- `.oxlintrc.json` — конфигурация `oxlint` (плагины: typescript, unicorn, vue).
+- `pint.json` — стандарты форматирования PHP для Laravel Pint.
+- `phpstan.neon` — статический анализ типов Larastan (Level 7).
+- `.editorconfig` — стандартизированные отступы для PHP, Vue, YAML, JSON.
+- `CLAUDE.md` и `AGENTS.md` — исчерпывающие инструкции для разработчиков и AI-агентов:
+  - Long-running worker-режим FrankenPHP (управление памятью, запрет утечек, безопасное завершение).
+  - Нулевая терпимость к лишним комментариям, лимиты длины файлов (≤ 350–400 строк).
+  - Паттерн `literal()` по умолчанию для именованных структур и ответов.
+  - Синтаксис PHP 8.5: pipe operator `|>`, first-class callables, `readonly`, `and`/`or` guards.
+  - **Современный CSS и нативный Nesting**: нативный W3C CSS Nesting, `:has()`, Container Queries, `color-mix`, `light-dark`, `@layer`, `subgrid`.
+  - Дизайн-система Mosaic, специфика Ark UI ScrollArea (`max-w-full`), Fortify auth, Centrifugo gRPC, строгие YAML i18n правила и гейты качества.
 
-## Использование в проектах
+## Быстрый старт для Laravel проекта
 
-### Подключение как submodule
+Скопировать файлы конфигурации в корень нового или существующего проекта:
+
 ```bash
-git submodule add https://github.com/e1berd/dotconfig.git .dotconfig
-```
-
-### Копирование конфигураций
-```bash
-# Базовый набор (ветка main)
-curl -sSL https://raw.githubusercontent.com/e1berd/dotconfig/main/.oxfmtrc.json -o .oxfmtrc.json
-curl -sSL https://raw.githubusercontent.com/e1berd/dotconfig/main/.oxlintrc.json -o .oxlintrc.json
-curl -sSL https://raw.githubusercontent.com/e1berd/dotconfig/main/.editorconfig -o .editorconfig
-curl -sSL https://raw.githubusercontent.com/e1berd/dotconfig/main/CLAUDE.md -o CLAUDE.md
-curl -sSL https://raw.githubusercontent.com/e1berd/dotconfig/main/AGENTS.md -o AGENTS.md
-
-# Для Laravel-проектов (ветка laravel)
+curl -sSL https://raw.githubusercontent.com/e1berd/dotconfig/laravel/.oxfmtrc.json -o .oxfmtrc.json
+curl -sSL https://raw.githubusercontent.com/e1berd/dotconfig/laravel/.oxlintrc.json -o .oxlintrc.json
 curl -sSL https://raw.githubusercontent.com/e1berd/dotconfig/laravel/pint.json -o pint.json
 curl -sSL https://raw.githubusercontent.com/e1berd/dotconfig/laravel/phpstan.neon -o phpstan.neon
+curl -sSL https://raw.githubusercontent.com/e1berd/dotconfig/laravel/.editorconfig -o .editorconfig
 curl -sSL https://raw.githubusercontent.com/e1berd/dotconfig/laravel/CLAUDE.md -o CLAUDE.md
 curl -sSL https://raw.githubusercontent.com/e1berd/dotconfig/laravel/AGENTS.md -o AGENTS.md
 ```
